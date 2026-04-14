@@ -3,7 +3,7 @@ import math
 from datetime import datetime
 from fpdf import FPDF
 
-# 1. 語言字典
+# 1. 語言字典 (加入 USD 標註)
 LANG = {
     'en': {
         'title': "Live Platform - Overseas Quotation System",
@@ -26,8 +26,8 @@ LANG = {
         'badging_clients': "Badging Clients (Qty)",
         'has_server': "Customer already has Server License",
         'has_face_func': "Face Recognition Function",
-        'total': "GRAND TOTAL",
-        'result_title': "Quotation Result",
+        'total': "GRAND TOTAL (USD)",
+        'result_title': "Quotation Result (Currency: USD)",
         'hw_header': "--- [ HARDWARE ] ---",
         'sw_header': "--- [ SOFTWARE ] ---"
     },
@@ -52,8 +52,8 @@ LANG = {
         'badging_clients': "制證客戶端數量",
         'has_server': "客戶已擁有 Server 授權",
         'has_face_func': "開啟人臉識別功能",
-        'total': "總計金額",
-        'result_title': "報價清單",
+        'total': "總計金額 (USD)",
+        'result_title': "報價清單 (貨幣單位: USD)",
         'hw_header': "--- [ 硬體清單 ] ---",
         'sw_header': "--- [ 軟體授權 ] ---"
     }
@@ -61,19 +61,19 @@ LANG = {
 
 # 2. 數據庫
 MAIN_CONTROLLERS = {
-    "MP4502": {"en": "MP4502 Main Controller", "zh": "MP4502 主控制器", "p": 3937.50, "note_en": "Flagship Server", "note_zh": "旗艦級主控"},
-    "MP1502": {"en": "MP1502 Main Controller", "zh": "MP1502 主控制器", "p": 2812.50, "note_en": "Standard 2-Door", "note_zh": "標準型雙門主控"},
-    "MP2500": {"en": "MP2500 Main Controller", "zh": "MP2500 主控制器", "p": 2887.50, "note_en": "Intelligent Processor", "note_zh": "智慧型處理器"},
-    "X1100A": {"en": "X1100A Main Controller", "zh": "X1100A 主控制器", "p": 750.00, "note_en": "Aero Series Main", "note_zh": "Aero 系列主控"},
+    "MP4502": {"en": "MP4502 Main Controller", "zh": "MP4502 主控制器", "p": 3937.50, "note_en": "Pure Processor (Max 64 RDs)", "note_zh": "中央處理器 (上限64讀卡器)"},
+    "MP1502": {"en": "MP1502 Main Controller", "zh": "MP1502 主控制器", "p": 2812.50, "note_en": "Pure Processor (Max 64 RDs)", "note_zh": "中央處理器 (上限64讀卡器)"},
+    "MP2500": {"en": "MP2500 Main Controller", "zh": "MP2500 主控制器", "p": 2887.50, "note_en": "Pure Processor (Max 64 RDs)", "note_zh": "中央處理器 (上限64讀卡器)"},
+    "X1100A": {"en": "X1100A Main Controller", "zh": "X1100A 主控制器", "p": 750.00, "note_en": "Aero Main (Max 64 RDs)", "note_zh": "Aero 主控 (上限64讀卡器)"},
 }
 
 EXP_MODS = {
-    "MR52-S3": {"en": "MR52-S3 Module", "zh": "MR52-S3 擴充板", "p": 1612.50, "r": 2, "note_en": "2-Door/2-Reader", "note_zh": "2門/2讀卡器"},
-    "X100A": {"en": "X100A Reader Module", "zh": "X100A 讀卡模組", "p": 412.50, "r": 4, "note_en": "4-Reader Interface", "note_zh": "4讀卡器接口"},
+    "MR52-S3": {"en": "MR52-S3 Module", "zh": "MR52-S3 擴充板", "p": 1612.50, "r": 2, "note_en": "Wiegand Mode (2 Readers)", "note_zh": "Wiegand 模式 (2隻讀卡器)"},
+    "X100A": {"en": "X100A Reader Module", "zh": "X100A 讀卡模組", "p": 412.50, "r": 2, "note_en": "Wiegand Mode (2 Readers)", "note_zh": "Wiegand 模式 (2隻讀卡器)"},
     "MR16IN": {"en": "MR16IN Module", "zh": "MR16IN 輸入板", "p": 1650.00, "note_en": "16 Inputs", "note_zh": "16路輸入"},
     "MR16OUT": {"en": "MR16OUT Module", "zh": "MR16OUT 輸出板", "p": 1650.00, "note_en": "16 Outputs", "note_zh": "16路輸出"},
-    "X200A": {"en": "X200A Module", "zh": "X200A 輸入板", "p": 425.00, "note_en": "16 Inputs (Aero)", "note_zh": "16路輸入 (Aero)"},
-    "X300A": {"en": "X300A Module", "zh": "X300A 輸出板", "p": 500.00, "note_en": "12 Outputs (Aero)", "note_zh": "12路輸出 (Aero)"},
+    "X200A": {"en": "X200A Module", "zh": "X200A 輸入板", "p": 425.00, "note_en": "16 Inputs", "note_zh": "16路輸入"},
+    "X300A": {"en": "X300A Module", "zh": "X300A 輸出板", "p": 500.00, "note_en": "12 Outputs", "note_zh": "12路輸出"},
 }
 
 LICENSES_INFO = {
@@ -97,19 +97,23 @@ def calculate_all(L):
     if st.session_state.system != "None":
         m_key = st.session_state.m_model if st.session_state.system == "Mercury" else "X1100A"
         m_info = MAIN_CONTROLLERS[m_key]
-        if not st.session_state.has_main:
-            hw_items.append({"n": m_info[L], "q": 1, "p": m_info["p"], "note": m_info[f"note_{L}"]})
-            
         exp = EXP_MODS["MR52-S3"] if st.session_state.system == "Mercury" else EXP_MODS["X100A"]
+        
+        # 2隻讀卡機一塊板
         r_qty = math.ceil(st.session_state.readers / exp["r"]) if st.session_state.readers > 0 else 0
-        if r_qty > 0: hw_items.append({"n": exp[L], "q": r_qty, "p": exp["p"], "note": exp[f"note_{L}"]})
-            
+        
         i_mod = EXP_MODS["MR16IN"] if st.session_state.system == "Mercury" else EXP_MODS["X200A"]
         o_mod = EXP_MODS["MR16OUT"] if st.session_state.system == "Mercury" else EXP_MODS["X300A"]
         i_qty = math.ceil(st.session_state.inputs / 16) if st.session_state.inputs > 0 else 0
         o_div = 16 if st.session_state.system == "Mercury" else 12
         o_qty = math.ceil(st.session_state.outputs / o_div) if st.session_state.outputs > 0 else 0
-        
+
+        # 主控數量上限 64 RDs
+        if not st.session_state.has_main:
+            num_main = math.ceil(st.session_state.readers / 64) if st.session_state.readers > 64 else 1
+            hw_items.append({"n": m_info[L], "q": num_main, "p": m_info["p"], "note": m_info[f"note_{L}"]})
+            
+        if r_qty > 0: hw_items.append({"n": exp[L], "q": r_qty, "p": exp["p"], "note": exp[f"note_{L}"]})
         if i_qty > 0: hw_items.append({"n": i_mod[L], "q": i_qty, "p": i_mod["p"], "note": i_mod[f"note_{L}"]})
         if o_qty > 0: hw_items.append({"n": o_mod[L], "q": o_qty, "p": o_mod["p"], "note": o_mod[f"note_{L}"]})
 
@@ -136,7 +140,7 @@ def calculate_all(L):
 
 # 4. 主介面
 def main():
-    st.set_page_config(layout="wide", page_title="Live Quotation")
+    st.set_page_config(layout="wide", page_title="Live Quotation (USD)")
     if 'lang_radio' not in st.session_state: st.session_state.lang_radio = "中文"
     st.radio("Language", ["中文", "English"], key="lang_radio", horizontal=True, label_visibility="collapsed")
     L = 'zh' if st.session_state.lang_radio == "中文" else 'en'
@@ -170,8 +174,6 @@ def main():
 
     with col_out:
         st.subheader(LANG[L]['result_title'])
-        
-        # 左右佈局
         res_col1, res_col2 = st.columns(2)
         
         with res_col1:
@@ -180,34 +182,34 @@ def main():
             for i, item in enumerate(hw):
                 color = "#FF4B4B" if i == 0 else "#2E86C1"
                 st.markdown(f"**<span style='color:{color}'>• {item['q']} x {item['n']}</span>**", unsafe_allow_html=True)
-                st.caption(f"└ {item['note']} | `${item['q']*item['p']:,.2f}`")
+                st.caption(f"└ {item['note']} | USD ${item['q']*item['p']:,.2f}")
         
         with res_col2:
             st.markdown(f"#### {LANG[L]['sw_header']}")
             if not sw: st.write("N/A")
             for item in sw:
                 st.markdown(f"**• {item['q']} x {item['n']}**")
-                st.caption(f"└ {item['note']} | `${item['q']*item['p']:,.2f}`")
+                st.caption(f"└ {item['note']} | USD ${item['q']*item['p']:,.2f}")
         
         st.divider()
-        st.write(f"### {LANG[L]['total']}: :red[${grand_total:,.2f}]")
+        st.write(f"### {LANG[L]['total']}: :red[USD ${grand_total:,.2f}]")
 
-        if st.button("Export PDF Report", use_container_width=True):
+        if st.button("Export PDF Report (USD)", use_container_width=True):
             pdf = FPDF()
             pdf.add_page()
             pdf.set_font("Helvetica", "B", 16)
-            pdf.cell(0, 10, "Quotation Summary", ln=True, align='C')
+            pdf.cell(0, 10, "Quotation Summary (Unit: USD)", ln=True, align='C')
             pdf.ln(10)
             pdf.set_font("Helvetica", "B", 10)
-            pdf.cell(90, 10, "Description", 1); pdf.cell(15, 10, "Qty", 1); pdf.cell(35, 10, "Price", 1); pdf.cell(35, 10, "Subtotal", 1, ln=True)
+            pdf.cell(90, 10, "Description", 1); pdf.cell(15, 10, "Qty", 1); pdf.cell(35, 10, "Price (USD)", 1); pdf.cell(35, 10, "Subtotal", 1, ln=True)
             pdf.set_font("Helvetica", "", 9)
             for item in hw + sw:
                 name = str(item['n']).encode('ascii', 'ignore').decode('ascii')
                 pdf.cell(90, 8, name, 1); pdf.cell(15, 8, str(item['q']), 1); pdf.cell(35, 8, f"{item['p']:,.2f}", 1); pdf.cell(35, 8, f"{item['q']*item['p']:,.2f}", 1, ln=True)
             pdf.set_font("Helvetica", "B", 10)
-            pdf.cell(105, 10, "", 0); pdf.cell(35, 10, "GRAND TOTAL", 1); pdf.cell(35, 10, f"${grand_total:,.2f}", 1)
+            pdf.cell(105, 10, "", 0); pdf.cell(35, 10, "TOTAL (USD)", 1); pdf.cell(35, 10, f"${grand_total:,.2f}", 1)
             pdf_out = pdf.output()
-            st.download_button("Download PDF", data=bytes(pdf_out), file_name="Quotation.pdf", mime="application/pdf", use_container_width=True)
+            st.download_button("Download PDF", data=bytes(pdf_out), file_name="Quotation_USD.pdf", mime="application/pdf", use_container_width=True)
 
 if __name__ == "__main__":
     main()
