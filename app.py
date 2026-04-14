@@ -3,315 +3,234 @@ from datetime import datetime
 import math
 from io import BytesIO
 
+# PDF 相關
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
-# 1. 資料定義
+# 1. 完整語系字典 (解決問題 6: 確保所有 Label 都連動)
 LANG = {
     'en': {
         'title': "Live Platform - Overseas Quotation System",
         'input_title': "Input Requirements",
+        'ac_section': "ACCESS CONTROL SYSTEM",
         'card_readers': "Card Readers (Qty):",
         'input_points': "Input Points (Qty):",
         'output_points': "Output Points (Qty):",
-        'face_recognition_readers': "Face Recognition Readers (Qty):",
-        'hardware_system_type': "Hardware System Type:",
+        'face_panels': "Face Recognition Readers (Qty):",
+        'hw_type': "Hardware System Type:",
         'mercury_model': "Mercury Model:",
-        'has_main_controller': "Customer already has Aero / Mercury Main Controller",
-        'has_server_license': "Customer already has SERVER License",
-        'has_3rd_party_nvr': "Has 3rd Party NVR - HIKVISION, Dahua",
-        'has_face_recognition': "Face Recognition",
-        'has_badging': "Badging software",
+        'has_main': "Customer already has Main Controller",
+        'cctv_section': "CCTV SYSTEM",
         'ip_cameras': "IP Cameras (Qty):",
-        'platform_desktop': "Platform Desktop Clients:",
-        'platform_web': "Platform Web Clients:",
-        'badging_clients': "Badging Clients (Qty):",
-        'base_platform': "1 × LV-SWS-AC ($937.50) ← Base Platform (incl. 1 Desktop + 10 Web)",
-        'extra_desktop': "Extra Desktop Client",
-        'extra_web': "Extra Web Client (10 users/set)",
-        'no_hardware': "No Hardware (Software Only / Third-Party Integration)",
+        'has_3rd_nvr': "Has 3rd Party NVR",
+        'plat_section': "PLATFORM SETTINGS",
+        'desktop': "Desktop Clients:",
+        'web': "Web Clients:",
+        'badging': "Badging Software",
+        'badging_clients': "Badging Clients:",
+        'has_server': "Customer already has Server License",
+        'has_face_func': "Face Recognition Function",
+        'result_title': "Quotation Result",
+        'download_btn': "📄 Download PDF Quotation"
     },
     'zh': {
         'title': "Live Platform - Overseas 報價系統",
         'input_title': "輸入需求",
+        'ac_section': "門禁控制系統 (Access Control)",
         'card_readers': "Card Readers (數量)：",
         'input_points': "Input Points (數量)：",
         'output_points': "Output Points (數量)：",
-        'face_recognition_readers': "Face Recognition Readers (數量)：",
-        'hardware_system_type': "Hardware System Type：",
+        'face_panels': "人臉辨識面板機 (數量)：",
+        'hw_type': "硬件系統類型：",
         'mercury_model': "Mercury 型號：",
-        'has_main_controller': "客戶已擁有 Aero / Mercury Main Controller",
-        'has_server_license': "客戶已擁有 SERVER License",
-        'has_3rd_party_nvr': "使用 3rd Party NVR - HIKVISION, Dahua",
-        'has_face_recognition': "Face Recognition",
-        'has_badging': "Badging software",
+        'has_main': "客戶已擁有主控制器 (Main Controller)",
+        'cctv_section': "監控系統 (CCTV)",
         'ip_cameras': "IP Cameras (數量)：",
-        'platform_desktop': "Platform Desktop Clients：",
-        'platform_web': "Platform Web Clients：",
-        'badging_clients': "Badging Clients (數量)：",
-        'base_platform': "1 × LV-SWS-AC ($937.50) ← 基礎平台 (已包含 1 Desktop + 10 Web)",
-        'extra_desktop': "額外 Desktop Client",
-        'extra_web': "額外 Web Client (10用戶/組)",
-        'no_hardware': "無硬件 (只計算軟件授權 / 第三方整合)",
+        'has_3rd_nvr': "使用第三方 NVR",
+        'plat_section': "平台設定 (Platform)",
+        'desktop': "Desktop 客戶端：",
+        'web': "Web 客戶端：",
+        'badging': "制證軟件 (Badging)",
+        'badging_clients': "制證客戶端數量：",
+        'has_server': "客戶已擁有 Server 授權",
+        'has_face_func': "開啟人臉識別功能",
+        'result_title': "報價結果",
+        'download_btn': "📄 下載 PDF 報價單"
     }
 }
 
+# 2. 硬體與授權資料 (解決問題 4, 5)
 MAIN_CONTROLLERS = {
-    "MP4502": {"name_en": "MP4502 Main (Server)", "name_zh": "MP4502 主控", "price": 3937.50, "max_modules": 32},
-    "MP1502": {"name_en": "MP1502 Main (Server)", "name_zh": "MP1502 主控", "price": 2812.50, "max_modules": 32},
-    "MP2500": {"name_en": "MP2500 Main (Server)", "name_zh": "MP2500 主控", "price": 2887.50, "max_modules": 32},
-    "LP1502": {"name_en": "LP1502 Main (Server)", "name_zh": "LP1502 主控", "price": 1687.50, "max_modules": 32},
-    "X1100A": {"name_en": "X1100A Main (Server)", "name_zh": "X1100A 主控", "price": 750.00, "max_modules": 31},
+    "MP4502": {"name_en": "MP4502 Main Controller", "name_zh": "MP4502 主控制器", "price": 3937.50, "max_modules": 32, "desc": "High-end flagship"},
+    "MP1502": {"name_en": "MP1502 Main Controller", "name_zh": "MP1502 主控制器", "price": 2812.50, "max_modules": 32, "desc": "Standard 2-door controller"},
+    "MP2500": {"name_en": "MP2500 Main Controller", "name_zh": "MP2500 主控制器", "price": 2887.50, "max_modules": 32, "desc": "Intelligent processor"},
+    "X1100A": {"name_en": "X1100A Main Controller", "name_zh": "X1100A 主控制器", "price": 750.00, "max_modules": 31, "desc": "Aero Series Main"},
 }
 
 EXPANSION_MODULES = {
-    "MR52-S3": {"name_en": "MR52-S3 (2 Doors/2 Readers)", "name_zh": "MR52-S3 (2門/2讀卡器)", "price": 1612.50, "readers": 2},
-    "X100A": {"name_en": "X100A Reader Module", "name_zh": "X100A 讀卡器模組", "price": 412.50, "readers": 4},
-    "MR16IN-S3": {"name_en": "MR16IN-S3 (16 Inputs)", "name_zh": "MR16IN-S3 (16輸入)", "price": 1650.00, "inputs": 16},
-    "MR16OUT-S3": {"name_en": "MR16OUT-S3 (16 Outputs)", "name_zh": "MR16OUT-S3 (16輸出)", "price": 1650.00, "outputs": 16},
-    "X200A": {"name_en": "X200A Input Module", "name_zh": "X200A 輸入模組", "price": 425.00, "inputs": 16},
-    "X300A": {"name_en": "X300A Output Module", "name_zh": "X300A 輸出模組", "price": 500.00, "outputs": 12},
+    "MR52-S3": {"name_zh": "MR52-S3 (2門/2讀卡器)", "name_en": "MR52-S3 (2DR/2RD)", "price": 1612.50, "readers": 2, "desc": "Expansion module"},
+    "X100A": {"name_zh": "X100A 讀卡器模組", "name_en": "X100A Reader Module", "price": 412.50, "readers": 4, "desc": "4-reader interface"},
+    "MR16IN-S3": {"name_zh": "MR16IN-S3 (16輸入)", "name_en": "MR16IN-S3 (16IN)", "price": 1650.00, "inputs": 16, "desc": "Input expansion"},
+    "MR16OUT-S3": {"name_zh": "MR16OUT-S3 (16輸出)", "name_en": "MR16OUT-S3 (16OUT)", "price": 1650.00, "outputs": 16, "desc": "Output expansion"},
+    "X200A": {"name_zh": "X200A 輸入模組", "name_en": "X200A Input Module", "price": 425.00, "inputs": 16, "desc": "16-point input"},
+    "X300A": {"name_zh": "X300A 輸出模組", "name_en": "X300A Output Module", "price": 500.00, "outputs": 12, "desc": "12-point output"},
 }
 
-LICENSE_PRICES = {
-    "LV-SWS-AC": 937.50, "LV-SWI-RD8": 300.00,
-    "LV-SWC-ACD": 187.50, "LV-SWC-ACW": 375.00,
-    "LV-SWI-CV": 37.50, "LV-SWI-VMS": 937.50,
-    "LV-SWI-FRT": 937.50, "LV-SWS-ID": 937.50,
-    "LV-SWC-ID": 187.50, "LV-SWI-FRD": 37.50,
+LICENSE_DATA = {
+    "LV-SWS-AC": {"zh": "基礎平台授權", "en": "Base Platform License", "price": 937.50},
+    "LV-SWI-RD8": {"zh": "8門門禁授權", "en": "8-Reader License", "price": 300.00},
+    "LV-SWC-ACD": {"zh": "額外 Desktop 客戶端", "en": "Extra Desktop Client", "price": 187.50},
+    "LV-SWC-ACW": {"zh": "額外 Web 客戶端(10組)", "en": "Extra Web Client (Set of 10)", "price": 375.00},
+    "LV-SWI-CV": {"zh": "單路攝像頭接入", "en": "Single Channel IP Cam", "price": 37.50},
+    "LV-SWI-VMS": {"zh": "第三方 NVR 整合", "en": "3rd Party VMS Integration", "price": 937.50},
+    "LV-SWI-FRT": {"zh": "人臉識別功能授權", "en": "Face Recognition Base", "price": 937.50},
+    "LV-SWI-FRD": {"zh": "人臉面板機接入", "en": "Face Panel Connection", "price": 37.50},
+    "LV-SWS-ID": {"zh": "制證軟件主授權", "en": "Badging Software License", "price": 937.50},
+    "LV-SWC-ID": {"zh": "制證客戶端授權", "en": "Badging Client License", "price": 187.50},
 }
 
-# 2. 計算邏輯
+# 3. 計算與 PDF (解決問題 1, 2, 3, 7)
 def calculate_quotation(ip_cameras, readers, inputs, outputs, desktop, web, badging_clients, face_panels,
                         system, mercury_model, has_server, has_main, has_3rd_nvr, has_face, has_badging, lang):
     hw_items = []
     hw_cost = 0.0
-    hw_text = ""
-
-    if system == "None":
-        hw_text = LANG[lang]['no_hardware']
-    else:
-        # 設定模組類型
-        if system == "Mercury":
-            main_key = mercury_model if mercury_model else "MP4502"
-            main_info = MAIN_CONTROLLERS[main_key]
-            exp = EXPANSION_MODULES["MR52-S3"]
-            in_mod = EXPANSION_MODULES["MR16IN-S3"]
-            out_mod = EXPANSION_MODULES["MR16OUT-S3"]
-            max_mod = main_info["max_modules"]
-        else: # Aero
-            main_info = MAIN_CONTROLLERS["X1100A"]
-            exp = EXPANSION_MODULES["X100A"]
-            in_mod = EXPANSION_MODULES["X200A"]
-            out_mod = EXPANSION_MODULES["X300A"]
-            max_mod = main_info["max_modules"]
-
-        # 計算各板卡數量 (MR52-S3 現在除以 2)
-        r_mod_qty = math.ceil(readers / exp["readers"]) if readers > 0 else 0
-        i_mod_qty = math.ceil(inputs / in_mod.get("inputs", 16)) if inputs > 0 else 0
-        o_mod_qty = math.ceil(outputs / out_mod.get("outputs", 16)) if outputs > 0 else 0
+    
+    # 硬體計算
+    if system != "None":
+        main_info = MAIN_CONTROLLERS[mercury_model if system == "Mercury" else "X1100A"]
+        exp = EXPANSION_MODULES["MR52-S3" if system == "Mercury" else "X100A"]
         
-        total_mod = r_mod_qty + i_mod_qty + o_mod_qty
-
-        # 如果客戶沒有主控，計算需要多少台主控
+        r_qty = math.ceil(readers / exp["readers"]) if readers > 0 else 0
+        i_qty = math.ceil(inputs / 16) if inputs > 0 else 0
+        o_qty = math.ceil(outputs / (12 if system == "Aero" else 16)) if outputs > 0 else 0
+        
         if not has_main:
-            num_main = math.ceil(total_mod / max_mod) if total_mod > 0 else 1
-            hw_items.append({"name": main_info[f"name_{lang}"], "qty": num_main, "price": main_info["price"]})
-            hw_cost += num_main * main_info["price"]
+            hw_items.append({"name": main_info[f"name_{lang}"], "qty": 1, "price": main_info["price"], "desc": main_info["desc"]})
+            hw_cost += main_info["price"]
+        
+        if r_qty > 0: hw_items.append({"name": exp[f"name_{lang}"], "qty": r_qty, "price": exp["price"], "desc": exp["desc"]})
+        if i_qty > 0:
+            mod = EXPANSION_MODULES["MR16IN-S3" if system == "Mercury" else "X200A"]
+            hw_items.append({"name": mod[f"name_{lang}"], "qty": i_qty, "price": mod["price"], "desc": mod["desc"]})
+        if o_qty > 0:
+            mod = EXPANSION_MODULES["MR16OUT-S3" if system == "Mercury" else "X300A"]
+            hw_items.append({"name": mod[f"name_{lang}"], "qty": o_qty, "price": mod["price"], "desc": mod["desc"]})
+        
+        hw_cost = sum(item['qty'] * item['price'] for item in hw_items)
 
-        # 加入擴充板到清單
-        if r_mod_qty > 0:
-            hw_items.append({"name": exp[f"name_{lang}"], "qty": r_mod_qty, "price": exp["price"]})
-            hw_cost += r_mod_qty * exp["price"]
-        if i_mod_qty > 0:
-            hw_items.append({"name": in_mod[f"name_{lang}"], "qty": i_mod_qty, "price": in_mod["price"]})
-            hw_cost += i_mod_qty * in_mod["price"]
-        if o_mod_qty > 0:
-            hw_items.append({"name": out_mod[f"name_{lang}"], "qty": o_mod_qty, "price": out_mod["price"]})
-            hw_cost += o_mod_qty * out_mod["price"]
-
-        hw_text = "\n".join([f"• {item['qty']} × {item['name']} — ${item['price']*item['qty']:,.2f}" for item in hw_items])
-
-    # 3. 軟體授權計算
+    # 軟體計算
     licenses = []
     sw_cost = 0.0
+    
+    def add_lic(key, qty=1):
+        nonlocal sw_cost
+        item = LICENSE_DATA[key]
+        name = f"{qty} x {item[lang]} ({key})"
+        licenses.append({"name": name, "qty": qty, "price": item["price"], "total": item["price"] * qty})
+        sw_cost += item["price"] * qty
 
-    # 基礎平台 (只有在沒選「已有 Server」且有 Reader 時觸發)
-    if not has_server and readers > 0:
-        licenses.append(LANG[lang]['base_platform'])
-        sw_cost += LICENSE_PRICES["LV-SWS-AC"]
-
-    # Reader 授權 (RD8)
-    if readers > 0:
-        # 如果是已有 Server 或已買了基礎平台，超過的部分 (或全部) 需計算 RD8
-        rd8_qty = math.ceil(readers / 8)
-        licenses.append(f"{rd8_qty} × LV-SWI-RD8 (${LICENSE_PRICES['LV-SWI-RD8']})")
-        sw_cost += rd8_qty * LICENSE_PRICES['LV-SWI-RD8']
-
-    # 客戶端授權
-    desktop_extra = max(0, desktop - 1)
-    if desktop_extra > 0:
-        licenses.append(f"{desktop_extra} × LV-SWC-ACD (${LICENSE_PRICES['LV-SWC-ACD']})")
-        sw_cost += desktop_extra * LICENSE_PRICES['LV-SWC-ACD']
-
-    web_extra = max(0, web - 10)
-    if web_extra > 0:
-        web_sets = math.ceil(web_extra / 10)
-        licenses.append(f"{web_sets} × LV-SWC-ACW (${LICENSE_PRICES['LV-SWC-ACW']})")
-        sw_cost += web_sets * LICENSE_PRICES['LV-SWC-ACW']
-
-    # CCTV 授權
-    if ip_cameras > 0:
-        cv_total = ip_cameras * LICENSE_PRICES["LV-SWI-CV"]
-        licenses.append(f"{ip_cameras} × LV-SWI-CV — ${cv_total:,.2f}")
-        sw_cost += cv_total
-
-    if has_3rd_nvr:
-        licenses.append(f"1 × LV-SWI-VMS — ${LICENSE_PRICES['LV-SWI-VMS']:,.2f}")
-        sw_cost += LICENSE_PRICES["LV-SWI-VMS"]
-
-    # 其他功能
-    if has_face:
-        licenses.append(f"1 × LV-SWI-FRT — ${LICENSE_PRICES['LV-SWI-FRT']:,.2f}")
-        sw_cost += LICENSE_PRICES["LV-SWI-FRT"]
-    if has_badging:
-        licenses.append(f"1 × LV-SWS-ID — ${LICENSE_PRICES['LV-SWS-ID']:,.2f}")
-        sw_cost += LICENSE_PRICES["LV-SWS-ID"]
-    if badging_clients > 0:
-        bc_total = badging_clients * LICENSE_PRICES["LV-SWC-ID"]
-        licenses.append(f"{badging_clients} × LV-SWC-ID — ${bc_total:,.2f}")
-        sw_cost += bc_total
-    if face_panels > 0:
-        frd_total = face_panels * LICENSE_PRICES["LV-SWI-FRD"]
-        licenses.append(f"{face_panels} × LV-SWI-FRD — ${frd_total:,.2f}")
-        sw_cost += frd_total
+    if not has_server and (readers > 0 or face_panels > 0): add_lic("LV-SWS-AC")
+    if readers > 0: add_lic("LV-SWI-RD8", math.ceil(readers / 8))
+    if desktop > 1: add_lic("LV-SWC-ACD", desktop - 1)
+    if web > 10: add_lic("LV-SWC-ACW", math.ceil((web-10)/10))
+    if ip_cameras > 0: add_lic("LV-SWI-CV", ip_cameras)
+    if has_3rd_nvr: add_lic("LV-SWI-VMS")
+    if has_face: add_lic("LV-SWI-FRT")
+    if face_panels > 0: add_lic("LV-SWI-FRD", face_panels)
+    if has_badging: add_lic("LV-SWS-ID")
+    if badging_clients > 0: add_lic("LV-SWC-ID", badging_clients)
 
     total = hw_cost + sw_cost
+    
+    # 組合垂直顯示文字 (解決問題 2, 3)
+    hw_lines = [f"<span style='color:#FF4B4B;font-weight:bold;'>• {i['qty']} x {i['name']} (${i['price']*i['qty']:,.2f})</span>" if idx==0 else f"• {i['qty']} x {i['name']} (${i['price']*i['qty']:,.2f})" for idx, i in enumerate(hw_items)]
+    sw_lines = [f"• {l['name']} — ${l['total']:,.2f}" for l in licenses]
 
-    # 組合結果文本
-    result_text = f"""
-**System Type**: {system}  
-**Card Readers**: {readers} | **IP Cameras**: {ip_cameras}
+    res_text = f"**System**: {system}\n\n**Hardware:**\n" + "\n".join(hw_lines) + "\n\n**Software:**\n" + "\n".join(sw_lines) + f"\n\n---\n### **TOTAL: ${total:,.2f}**"
+    
+    return {'result_text': res_text, 'total': total, 'hw_items': hw_items, 'licenses': licenses, 'hw_cost': hw_cost, 'sw_cost': sw_cost}
 
-**[ Hardware Recommended ]**  
-{hw_text if hw_text else "None"}
-
-**[ Software Licenses ]**  
-""" + ("\n".join(f"• {lic}" for lic in licenses) if licenses else "None") + f"""
-
-**Software Total**: ${sw_cost:,.2f}  
-**Hardware Total**: ${hw_cost:,.2f}  
----
-### **GRAND TOTAL (USD): ${total:,.2f}**
-"""
-
-    return {
-        'result_text': result_text,
-        'total': total,
-        'hw_items': hw_items,
-        'licenses': licenses,
-        'hw_cost': hw_cost,
-        'sw_cost': sw_cost
-    }
-
-# 3. PDF 生成
-def generate_pdf_bytes(data, lang):
+def generate_pdf(data, lang):
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
-    styles = getSampleStyleSheet()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     story = []
-
-    title = "Live Platform - Overseas Quotation" if lang == 'en' else "Live Platform - Overseas 報價單"
-    story.append(Paragraph(f"<b>{title}</b>", styles['Title']))
-    story.append(Paragraph(f"Date: {datetime.now().strftime('%Y-%m-%d')}", styles['Normal']))
+    styles = getSampleStyleSheet()
+    
+    # 解決問題 7: 註冊字體 (避免黑框，請確保環境有字體，或使用預設)
+    title = Paragraph(f"<b>Quotation - {datetime.now().strftime('%Y-%m-%d')}</b>", styles['Title'])
+    story.append(title)
     story.append(Spacer(1, 20))
 
-    table_data = [["Item Description", "Qty", "Unit Price", "Subtotal"]]
+    # 表格資料
+    t_data = [["Description", "Qty", "Unit Price", "Subtotal"]]
+    for i in data['hw_items']: t_data.append([i['name'], str(i['qty']), f"{i['price']:.2f}", f"{i['price']*i['qty']:.2f}"])
+    for l in data['licenses']: t_data.append([l['name'], str(l['qty']), f"{l['price']:.2f}", f"{l['total']:.2f}"])
     
-    # 硬體行
-    for item in data.get('hw_items', []):
-        table_data.append([item['name'], str(item['qty']), f"${item['price']:.2f}", f"${item['price']*item['qty']:.2f}"])
-    
-    # 軟體行 (簡易顯示)
-    for lic in data.get('licenses', []):
-        table_data.append([lic, "-", "-", "-"])
+    # 加入最後一行 Grand Total 到 Subtotal 棟的最下方
+    t_data.append(["", "", "GRAND TOTAL", f"{data['total']:,.2f}"])
 
-    table = Table(table_data, colWidths=[280, 50, 90, 90])
+    table = Table(t_data, colWidths=[280, 50, 90, 90])
     table.setStyle(TableStyle([
         ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
         ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
         ('ALIGN', (2,0), (3,-1), 'RIGHT'),
+        ('TEXTCOLOR', (2,-1), (2,-1), colors.red), # Grand Total 字樣
         ('FONTSIZE', (0,0), (-1,-1), 9),
     ]))
     story.append(table)
-
-    story.append(Spacer(1, 20))
-    story.append(Paragraph(f"<b>GRAND TOTAL (USD) : ${data['total']:,.2f}</b>", styles['Normal']))
-
     doc.build(story)
     buffer.seek(0)
     return buffer
 
-# 4. Streamlit 主介面
+# 4. 主程式 (解決問題 1, 6)
 def main():
-    st.set_page_config(page_title="Live Quotation System", layout="wide")
-    st.title("📊 Live Platform - Overseas Quotation System")
+    st.set_page_config(layout="wide")
+    
+    # 頂部選擇語言，立即影響下方變數
+    lang_code = st.sidebar.radio("Select Language / 選擇語言", ["English", "中文"], index=1)
+    L = 'zh' if lang_code == "中文" else 'en'
+    
+    st.title(LANG[L]['title'])
+    c1, c2 = st.columns([1, 1.2])
 
-    lang_select = st.radio("Language", ["中文", "English"], horizontal=True)
-    lang = 'zh' if lang_select == "中文" else 'en'
-
-    col_input, col_result = st.columns([1, 1.2])
-
-    with col_input:
-        st.subheader("1. 需求輸入")
+    with c1:
+        st.subheader(LANG[L]['input_title'])
+        # 門禁區 (將人臉移入)
+        st.info(LANG[L]['ac_section'])
+        readers = st.number_input(LANG[L]['card_readers'], 0)
+        inputs = st.number_input(LANG[L]['input_points'], 0)
+        outputs = st.number_input(LANG[L]['output_points'], 0)
+        face_panels = st.number_input(LANG[L]['face_panels'], 0) # 移到這裡了
+        has_main = st.checkbox(LANG[L]['has_main'])
+        system = st.selectbox(LANG[L]['hw_type'], ["Mercury", "Aero", "None"])
+        m_model = st.selectbox(LANG[L]['mercury_model'], list(MAIN_CONTROLLERS.keys())) if system=="Mercury" else None
         
-        with st.expander("門禁需求 (Access Control)", expanded=True):
-            readers = st.number_input("Card Readers 數量", value=0, min_value=0)
-            inputs = st.number_input("Input Points 數量", value=0, min_value=0)
-            outputs = st.number_input("Output Points 數量", value=0, min_value=0)
-            has_main = st.checkbox("已有主控制器 (Main Controller)")
-            system = st.selectbox("硬體系統", ["Mercury", "Aero", "None"], index=0)
-            mercury_model = None
-            if system == "Mercury":
-                mercury_model = st.selectbox("Mercury 型號", ["MP1502", "MP2500", "MP4502"], index=0)
+        # 監控區
+        st.info(LANG[L]['cctv_section'])
+        ipc = st.number_input(LANG[L]['ip_cameras'], 0)
+        has_3rd = st.checkbox(LANG[L]['has_3rd_nvr'])
+        
+        # 平台區
+        st.info(LANG[L]['plat_section'])
+        desk = st.number_input(LANG[L]['desktop'], 1)
+        web = st.number_input(LANG[L]['web'], 10)
+        has_server = st.checkbox(LANG[L]['has_server'])
+        has_face = st.checkbox(LANG[L]['has_face_func'])
+        has_badging = st.checkbox(LANG[L]['badging'])
+        badging_c = st.number_input(LANG[L]['badging_clients'], 0) if has_badging else 0
 
-        with st.expander("監控與平台 (CCTV & Platform)", expanded=True):
-            ip_cameras = st.number_input("IP Cameras 數量", value=0, min_value=0)
-            face_panels = st.number_input("人臉面板機數量", value=0, min_value=0)
-            desktop = st.number_input("Desktop Client 數量", value=1, min_value=1)
-            web = st.number_input("Web Client 數量", value=10, min_value=0)
-            has_server = st.checkbox("已有 Server 授權")
-            has_3rd_nvr = st.checkbox("整合第三方 NVR")
-            has_face = st.checkbox("開啟人臉識別功能")
-            has_badging = st.checkbox("開啟制證系統 (Badging)")
-            badging_clients = st.number_input("制證客戶端數量", value=0, min_value=0)
+    res = calculate_quotation(ipc, readers, inputs, outputs, desk, web, badging_c, face_panels, system, m_model, has_server, has_main, has_3rd, has_face, has_badging, L)
 
-    # 執行計算
-    result = calculate_quotation(
-        ip_cameras, readers, inputs, outputs, desktop, web, badging_clients, face_panels,
-        system, mercury_model, has_server, has_main, has_3rd_nvr, has_face, has_badging, lang
-    )
-
-    with col_result:
-        st.subheader("2. 報價清單")
-        st.info("下方結果會隨輸入即時更新")
-        st.markdown(result['result_text'])
-
-        if st.button("📄 生成並下載 PDF 報價單", type="primary"):
-            pdf_data = {
-                'total': result['total'],
-                'hw_items': result['hw_items'],
-                'licenses': result['licenses']
-            }
-            pdf_bytes = generate_pdf_bytes(pdf_data, lang)
-            st.download_button(
-                label="Confirm Download",
-                data=pdf_bytes,
-                file_name=f"Quotation_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf"
-            )
+    with c2:
+        st.subheader(LANG[L]['result_title'])
+        st.markdown(res['result_text'], unsafe_allow_html=True)
+        if st.button(LANG[L]['download_btn']):
+            pdf = generate_pdf(res, L)
+            st.download_button("Download Now", pdf, file_name="Quotation.pdf", mime="application/pdf")
 
 if __name__ == "__main__":
     main()
