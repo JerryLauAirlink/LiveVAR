@@ -3,7 +3,7 @@ import math
 from datetime import datetime
 from fpdf import FPDF
 
-# 1. 語言字典 (加入 USD 標註)
+# 1. 語言字典 (加入 Intelligent Box 相關內容)
 LANG = {
     'en': {
         'title': "Live Platform - Overseas Quotation System",
@@ -26,6 +26,7 @@ LANG = {
         'badging_clients': "Badging Clients (Qty)",
         'has_server': "Customer already has Server License",
         'has_face_func': "Face Recognition Function",
+        'has_ibox': "Intelligent Box (LV-HW-ACSE)",
         'total': "GRAND TOTAL (USD)",
         'result_title': "Quotation Result (Currency: USD)",
         'hw_header': "--- [ HARDWARE ] ---",
@@ -52,6 +53,7 @@ LANG = {
         'badging_clients': "制證客戶端數量",
         'has_server': "客戶已擁有 Server 授權",
         'has_face_func': "開啟人臉識別功能",
+        'has_ibox': "智能管理盒子 (LV-HW-ACSE)",
         'total': "總計金額 (USD)",
         'result_title': "報價清單 (貨幣單位: USD)",
         'hw_header': "--- [ 硬體清單 ] ---",
@@ -59,7 +61,9 @@ LANG = {
     }
 }
 
-# 2. 數據庫
+# 2. 數據庫 (加入 LV-HW-ACSE 價格，假設為 1500 USD，請自行調整)
+IBOX_PRICE = 1500.00 
+
 MAIN_CONTROLLERS = {
     "MP4502": {"en": "MP4502 Main Controller", "zh": "MP4502 主控制器", "p": 3937.50, "note_en": "Pure Processor (Max 64 RDs)", "note_zh": "中央處理器 (上限64讀卡器)"},
     "MP1502": {"en": "MP1502 Main Controller", "zh": "MP1502 主控制器", "p": 2812.50, "note_en": "Pure Processor (Max 64 RDs)", "note_zh": "中央處理器 (上限64讀卡器)"},
@@ -94,21 +98,24 @@ def calculate_all(L):
     hw_items = []
     sw_items = []
     
+    # 增加 Intelligent Box 硬體顯示 (如果勾選)
+    if st.session_state.has_ibox:
+        note_en = "Embedded Linux Box, incl. 8RD/1DT/10Web Licenses"
+        note_zh = "嵌入式 Linux 管理盒, 已含 8RD/1DT/10Web 授權"
+        hw_items.append({"n": "LV-HW-ACSE Intelligent Box", "q": 1, "p": IBOX_PRICE, "note": note_zh if L == 'zh' else note_en})
+
     if st.session_state.system != "None":
         m_key = st.session_state.m_model if st.session_state.system == "Mercury" else "X1100A"
         m_info = MAIN_CONTROLLERS[m_key]
         exp = EXP_MODS["MR52-S3"] if st.session_state.system == "Mercury" else EXP_MODS["X100A"]
         
-        # 2隻讀卡機一塊板
         r_qty = math.ceil(st.session_state.readers / exp["r"]) if st.session_state.readers > 0 else 0
-        
         i_mod = EXP_MODS["MR16IN"] if st.session_state.system == "Mercury" else EXP_MODS["X200A"]
         o_mod = EXP_MODS["MR16OUT"] if st.session_state.system == "Mercury" else EXP_MODS["X300A"]
         i_qty = math.ceil(st.session_state.inputs / 16) if st.session_state.inputs > 0 else 0
         o_div = 16 if st.session_state.system == "Mercury" else 12
         o_qty = math.ceil(st.session_state.outputs / o_div) if st.session_state.outputs > 0 else 0
 
-        # 主控數量上限 64 RDs
         if not st.session_state.has_main:
             num_main = math.ceil(st.session_state.readers / 64) if st.session_state.readers > 64 else 1
             hw_items.append({"n": m_info[L], "q": num_main, "p": m_info["p"], "note": m_info[f"note_{L}"]})
@@ -122,8 +129,10 @@ def calculate_all(L):
             info = LICENSES_INFO[key]
             sw_items.append({"n": f"{info[L]} ({key})", "q": qty, "p": info["p"], "note": info[f"note_{L}"]})
 
-    if not st.session_state.has_server and (st.session_state.readers > 0 or st.session_state.face_panels > 0):
+    # 重要邏輯：如果沒勾 Intelligent Box 且沒已有 Server，才買基礎平台
+    if not st.session_state.has_ibox and not st.session_state.has_server and (st.session_state.readers > 0 or st.session_state.face_panels > 0):
         add_sw("LV-SWS-AC", 1)
+    
     if st.session_state.readers > 0:
         add_sw("LV-SWI-RD8", math.ceil(st.session_state.readers/8))
     add_sw("LV-SWC-ACD", max(0, st.session_state.desktop - 1))
@@ -165,6 +174,7 @@ def main():
         with st.expander(LANG[L]['plat_section'], expanded=True):
             st.number_input(LANG[L]['desktop'], 1, key="desktop")
             st.number_input(LANG[L]['web'], 10, key="web")
+            st.checkbox(LANG[L]['has_ibox'], key="has_ibox") # 新增勾選
             st.checkbox(LANG[L]['has_server'], key="has_server")
             st.checkbox(LANG[L]['has_face_func'], key="has_face")
             st.checkbox(LANG[L]['badging'], key="has_badging")
@@ -175,7 +185,6 @@ def main():
     with col_out:
         st.subheader(LANG[L]['result_title'])
         res_col1, res_col2 = st.columns(2)
-        
         with res_col1:
             st.markdown(f"#### {LANG[L]['hw_header']}")
             if not hw: st.write("N/A")
@@ -183,7 +192,6 @@ def main():
                 color = "#FF4B4B" if i == 0 else "#2E86C1"
                 st.markdown(f"**<span style='color:{color}'>• {item['q']} x {item['n']}</span>**", unsafe_allow_html=True)
                 st.caption(f"└ {item['note']} | USD ${item['q']*item['p']:,.2f}")
-        
         with res_col2:
             st.markdown(f"#### {LANG[L]['sw_header']}")
             if not sw: st.write("N/A")
