@@ -10,6 +10,10 @@ LANG = {
         'title': "Live Platform - Quotation System",
         'input_title': "Requirement Specifications",
         'ac_section': "Access Control System",
+        'load_setting': "Controller Load Strategy",
+        'load_16': "Stable (16)",
+        'load_32': "Standard (32)",
+        'load_64': "Extreme (64)",
         'card_readers': "Card Readers",
         'input_points': "Input Points",
         'output_points': "Output Points",
@@ -38,6 +42,10 @@ LANG = {
         'title': "Live Platform - 報價系統",
         'input_title': "需求規格",
         'ac_section': "門禁控制系統",
+        'load_setting': "主控板負載策略",
+        'load_16': "最穩定 (16)",
+        'load_32': "標準 (32)",
+        'load_64': "極限 (64)",
         'card_readers': "Card Readers 數量",
         'input_points': "Input Points 數量",
         'output_points': "Output Points 數量",
@@ -51,8 +59,8 @@ LANG = {
         'plat_section': "平台設定",
         'desktop': "Desktop 客戶端",
         'web': "Web 客戶端",
-        'badging': "制證軟件 (Badging)",
-        'badging_clients': "制證客戶端數量",
+        'badging': "製證軟件 (Badging)",
+        'badging_clients': "製證客戶端數量",
         'has_server': "客戶已擁有 Server 授權",
         'has_face_func': "開啟人臉識別功能",
         'has_ibox': "智能管理盒子 (iBox)",
@@ -64,7 +72,7 @@ LANG = {
     }
 }
 
-# 數據庫
+# 2. 數據庫
 IBOX_PRICE = 1500.00 
 MAIN_CONTROLLERS = {
     "MP4502": {"en": "MP4502 Main Controller", "zh": "MP4502 主控制器", "p": 3937.50},
@@ -89,10 +97,11 @@ LICENSES_INFO = {
     "LV-SWI-VMS": {"en": "3rd Party VMS", "zh": "第三方 NVR 整合", "p": 937.50},
     "LV-SWI-FRT": {"en": "Face Recog Base", "zh": "人臉識別基礎", "p": 937.50},
     "LV-SWI-FRD": {"en": "Face Panel Link", "zh": "人臉面板機接入", "p": 37.50},
-    "LV-SWS-ID": {"en": "Badging Software", "zh": "制證系統授權", "p": 937.50},
-    "LV-SWC-ID": {"en": "Badging Client", "zh": "制證客戶端", "p": 187.50},
+    "LV-SWS-ID": {"en": "Badging Software", "zh": "製證系統授權", "p": 937.50},
+    "LV-SWC-ID": {"en": "Badging Client", "zh": "製證客戶端", "p": 187.50},
 }
 
+# 3. 輔助功能
 def check_password():
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
@@ -112,26 +121,36 @@ def calculate_all(L):
     s = st.session_state
     base_readers, base_desktop, base_web = 0, 0, 0
     
+    # 讀取負載標準
+    load_map = {"Stable": 16, "Standard": 32, "Extreme": 64}
+    max_load = load_map.get(s.get('load_strategy', "Standard"), 32)
+    
     if s.get('has_ibox', False):
         hw_items.append({"n": "LV-HW-ACSE iBox", "q": 1, "p": IBOX_PRICE})
         base_readers, base_desktop, base_web = 8, 1, 10
 
-    if s.get('system', "None") != "None":
-        m_key = s.get('m_model', "MP4502") if s['system'] == "Mercury" else "X1100A"
+    current_system = s.get('system', "None")
+    if current_system != "None":
+        m_key = s.get('m_model', "MP4502") if current_system == "Mercury" else "X1100A"
         m_info = MAIN_CONTROLLERS[m_key]
-        exp = EXP_MODS["MR52-S3"] if s['system'] == "Mercury" else EXP_MODS["X100A"]
+        exp = EXP_MODS["MR52-S3"] if current_system == "Mercury" else EXP_MODS["X100A"]
+        
         readers = s.get('readers', 0)
-        if not s.get('has_main', False):
-            num_main = math.ceil(readers / 64) if readers > 64 else 1
+        if not s.get('has_main', False) and readers > 0:
+            # 根據選擇的 16/32/64 計算主控數量
+            num_main = math.ceil(readers / max_load)
             hw_items.append({"n": m_info[L], "q": num_main, "p": m_info["p"]})
+            
         r_qty = math.ceil(readers / exp["r"]) if readers > 0 else 0
         if r_qty > 0: hw_items.append({"n": exp[L], "q": r_qty, "p": exp["p"]})
+        
         i_qty = math.ceil(s.get('inputs', 0) / 16) if s.get('inputs', 0) > 0 else 0
-        i_mod = EXP_MODS["MR16IN"] if s['system'] == "Mercury" else EXP_MODS["X200A"]
+        i_mod = EXP_MODS["MR16IN"] if current_system == "Mercury" else EXP_MODS["X200A"]
         if i_qty > 0: hw_items.append({"n": i_mod[L], "q": i_qty, "p": i_mod["p"]})
-        o_div = 16 if s['system'] == "Mercury" else 12
+        
+        o_div = 16 if current_system == "Mercury" else 12
         o_qty = math.ceil(s.get('outputs', 0) / o_div) if s.get('outputs', 0) > 0 else 0
-        o_mod = EXP_MODS["MR16OUT"] if s['system'] == "Mercury" else EXP_MODS["X300A"]
+        o_mod = EXP_MODS["MR16OUT"] if current_system == "Mercury" else EXP_MODS["X300A"]
         if o_qty > 0: hw_items.append({"n": o_mod[L], "q": o_qty, "p": o_mod["p"]})
 
     def add_sw(key, qty):
@@ -147,7 +166,7 @@ def calculate_all(L):
     if s.get('has_server'):
         base_readers, base_desktop, base_web = 8, 1, 10
 
-    if base_readers > 0:
+    if base_readers > 0 or s.get('has_server'):
         add_sw("LV-SWI-RD8", math.ceil(max(0, readers - base_readers)/8))
         add_sw("LV-SWC-ACD", max(0, s.get('desktop', 1) - base_desktop))
         add_sw("LV-SWC-ACW", math.ceil(max(0, s.get('web', 10) - base_web)/10))
@@ -170,30 +189,28 @@ def inline_input(label, key, type="number", **kwargs):
         if type == "checkbox": return st.checkbox("", key=key, label_visibility="collapsed", **kwargs)
         if type == "selectbox": return st.selectbox("", key=key, label_visibility="collapsed", **kwargs)
 
+# 4. 主程式
 def main():
     if not check_password(): return
-    st.set_page_config(layout="wide", page_title="Quotation Tool")
+    st.set_page_config(layout="wide", page_title="Live Quotation Tool")
 
     st.markdown("""
         <style>
         @media (min-width: 992px) {
             [data-testid="column"]:nth-child(2) {
-                position: fixed;
-                right: 2rem;
-                width: 35%;
-                max-height: 85vh;
-                overflow-y: auto;
-                background: #fdfdfd;
-                padding: 1.5rem;
-                border: 1px solid #eee;
-                border-radius: 8px;
+                position: fixed; right: 2rem; width: 35%;
+                max-height: 85vh; overflow-y: auto;
+                background: #fdfdfd; padding: 1.5rem;
+                border: 1px solid #eee; border-radius: 8px;
             }
         }
+        .stMetric { background: #f8f9fa; padding: 10px; border-radius: 5px; }
+        div[data-testid="stExpander"] { border: none !important; box-shadow: none !important; }
         </style>
         """, unsafe_allow_html=True)
 
     with st.sidebar:
-        st.radio("Language", ["中文", "English"], key="lang_radio", horizontal=True)
+        st.radio("Language / 語言", ["中文", "English"], key="lang_radio", horizontal=True)
         L = 'zh' if st.session_state.lang_radio == "中文" else 'en'
         if st.button("Logout"):
             st.session_state.authenticated = False
@@ -212,13 +229,26 @@ def main():
             inline_input(LANG[L]['desktop'], "desktop", value=1)
             inline_input(LANG[L]['web'], "web", value=10)
             inline_input(LANG[L]['badging'], "has_badging", "checkbox")
-            inline_input(LANG[L]['badging_clients'], "badging_clients", value=0)
+            if st.session_state.get('has_badging'):
+                inline_input(LANG[L]['badging_clients'], "badging_clients", value=0)
 
         with st.expander(LANG[L]['ac_section'], expanded=True):
-            # 修改處：將 index 設為 2 (即 "None")
+            # 新增：打橫的三個策略按鈕
+            st.markdown(f"<div style='font-size: 14px; font-weight: 500; margin-bottom:5px;'>{LANG[L]['load_setting']}</div>", unsafe_allow_html=True)
+            st.radio(
+                "Load Strategy", 
+                options=["Stable", "Standard", "Extreme"], 
+                format_func=lambda x: LANG[L][f'load_{"16" if x=="Stable" else ("32" if x=="Standard" else "64")}'],
+                key="load_strategy", 
+                horizontal=True, 
+                label_visibility="collapsed"
+            )
+            st.markdown("<div style='margin-bottom:15px;'></div>", unsafe_allow_html=True)
+
             inline_input(LANG[L]['hw_type'], "system", "selectbox", options=["Mercury", "Aero", "None"], index=2)
             if st.session_state.get('system') == "Mercury":
                 inline_input(LANG[L]['mercury_model'], "m_model", "selectbox", options=["MP1502", "MP2500", "MP4502"])
+            
             inline_input(LANG[L]['card_readers'], "readers")
             inline_input(LANG[L]['input_points'], "inputs")
             inline_input(LANG[L]['output_points'], "outputs")
@@ -235,6 +265,7 @@ def main():
     with col_out:
         st.subheader(LANG[L]['result_title'])
         st.metric(LANG[L]['raw_total'], f"USD ${total:,.2f}")
+        
         st.markdown(f"**{LANG[L]['hw_header']}**")
         if hw:
             for item in hw:
@@ -243,6 +274,7 @@ def main():
                 c2.markdown(f"<div style='font-size:13px'>x{item['q']}</div>", unsafe_allow_html=True)
                 c3.markdown(f"<div style='font-size:13px; text-align:right;'>${item['q']*item['p']:,.1f}</div>", unsafe_allow_html=True)
         else: st.caption("No hardware selected")
+        
         st.divider()
         st.markdown(f"**{LANG[L]['sw_header']}**")
         if sw:
@@ -252,18 +284,47 @@ def main():
                 c2.markdown(f"<div style='font-size:13px'>x{item['q']}</div>", unsafe_allow_html=True)
                 c3.markdown(f"<div style='font-size:13px; text-align:right;'>${item['q']*item['p']:,.1f}</div>", unsafe_allow_html=True)
         else: st.caption("No licenses needed")
+        
         st.divider()
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Helvetica", "B", 16); pdf.cell(0, 10, "QUOTATION (USD)", ln=True, align='C')
-        pdf.set_font("Helvetica", "", 10); pdf.cell(0, 10, f"Date: {datetime.now().strftime('%Y-%m-%d')}", ln=True, align='R')
-        pdf.set_font("Helvetica", "B", 10); pdf.cell(100, 10, "Item", 1); pdf.cell(15, 10, "Qty", 1); pdf.cell(35, 10, "Price", 1); pdf.cell(35, 10, "Subtotal", 1, ln=True)
-        pdf.set_font("Helvetica", "", 9)
-        for item in hw + sw:
-            name = str(item['n']).encode('ascii', 'ignore').decode('ascii')
-            pdf.cell(100, 8, name, 1); pdf.cell(15, 8, str(item['q']), 1); pdf.cell(35, 8, f"{item['p']:,.2f}", 1); pdf.cell(35, 8, f"{item['q']*item['p']:,.2f}", 1, ln=True)
-        pdf.ln(5); pdf.set_font("Helvetica", "B", 11); pdf.cell(115, 10, "", 0); pdf.cell(35, 10, "TOTAL", 1); pdf.cell(35, 10, f"${total:,.2f}", 1)
-        st.download_button(label=LANG[L]['export_pdf'], data=bytes(pdf.output()), file_name=f"Quote_{datetime.now().strftime('%Y%m%d')}.pdf", mime="application/pdf", use_container_width=True)
+
+        try:
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Helvetica", "B", 16)
+            pdf.cell(0, 10, "OFFICIAL QUOTATION (USD)", ln=True, align='C')
+            pdf.set_font("Helvetica", "", 10)
+            pdf.cell(0, 10, f"Date: {datetime.now().strftime('%Y-%m-%d')}", ln=True, align='R')
+            
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.set_fill_color(240, 240, 240)
+            pdf.cell(95, 10, " Item", 1, 0, 'L', True)
+            pdf.cell(15, 10, " Qty", 1, 0, 'C', True)
+            pdf.cell(35, 10, " Unit Price", 1, 0, 'C', True)
+            pdf.cell(35, 10, " Subtotal", 1, 1, 'C', True)
+            
+            pdf.set_font("Helvetica", "", 9)
+            for item in hw + sw:
+                name = str(item['n']).encode('ascii', 'ignore').decode('ascii')
+                pdf.cell(95, 8, f" {name}", 1)
+                pdf.cell(15, 8, str(item['q']), 1, 0, 'C')
+                pdf.cell(35, 8, f"{item['p']:,.2f}", 1, 0, 'R')
+                pdf.cell(35, 8, f"{item['q']*item['p']:,.2f}", 1, 1, 'R')
+            
+            pdf.ln(5)
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.cell(110, 10, "", 0)
+            pdf.cell(35, 10, "GRAND TOTAL", 1, 0, 'C', True)
+            pdf.cell(35, 10, f" ${total:,.2f}", 1, 1, 'R')
+            
+            st.download_button(
+                label=LANG[L]['export_pdf'],
+                data=bytes(pdf.output()),
+                file_name=f"Quote_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Error generating PDF: {e}")
 
 if __name__ == "__main__":
     main()
